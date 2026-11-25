@@ -25,12 +25,11 @@ const GENDERS = ["Male", "Female", "Other"];
 const WARDS = ["General Ward", "ICU", "Emergency", "Maternity", "Pediatrics"];
 const DEPARTMENTS = ["Cardiology", "Neurology", "Orthopedics", "General Medicine", "Pediatrics"];
 const DOCTORS = [
-  "Dr. Adithya Sharma",
+  "Dr. Adithya Sharma", 
+  "Dr. Meera Rao", 
   "Dr. Karthik Nair",
-  "Dr. Meera Rao",
-  "Dr. Priya Rao",
-  "Dr. Rohan Verma",
-  "Dr. Sneha Iyer",
+  "Dr. Priya Verma", 
+  "Dr. Vikram Iyer",
 ];
 
 const initialFormState = {
