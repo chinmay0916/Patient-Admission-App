@@ -2,19 +2,21 @@ import { useState, useEffect, useMemo } from "react";
 import {
   Activity,
   UserPlus,
+  Users,
+  BedDouble,
+  HeartPulse,
+  CheckCircle2,
   Search,
   Filter,
   RotateCcw,
-  Edit3,
+  Pencil,
   Trash2,
-  CheckCircle2,
+  X,
+  Calendar,
+  Clock,
   Stethoscope,
   Building2,
-  Calendar,
   AlertCircle,
-  X,
-  Users,
-  BedDouble,
 } from "lucide-react";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
@@ -24,13 +26,12 @@ const WARDS = ["General Ward", "ICU", "Emergency", "Maternity", "Pediatrics"];
 const DEPARTMENTS = ["Cardiology", "Neurology", "Orthopedics", "General Medicine", "Pediatrics"];
 const DOCTORS = [
   "Dr. Adithya Sharma",
-  "Dr. Meera Rao",
   "Dr. Karthik Nair",
-  "Dr. Priya Verma",
-  "Dr. Vikram Iyer",
+  "Dr. Meera Rao",
+  "Dr. Priya Rao",
+  "Dr. Rohan Verma",
+  "Dr. Sneha Iyer",
 ];
-
-const getTodayDate = () => new Date().toISOString().split("T")[0];
 
 const initialFormState = {
   name: "",
@@ -39,135 +40,133 @@ const initialFormState = {
   ward: "",
   department: "",
   doctor: "",
-  admission_date: getTodayDate(),
+  admission_date: new Date().toISOString().split("T")[0],
   status: "Admitted",
 };
 
+// Helper to calculate relative timeline text ("Today", "Yesterday", "X days ago")
+function getRelativeAdmissionTime(dateString) {
+  if (!dateString) return "";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [y, m, d] = dateString.split("-").map(Number);
+  const admitted = new Date(y, m - 1, d);
+  const diffDays = Math.round((today - admitted) / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays > 1) return `${diffDays} days ago`;
+  return "Scheduled";
+}
+
 export default function App() {
   const [patients, setPatients] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [globalError, setGlobalError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState("");
 
-  // Search & Filter states
+  // Filters & Search
   const [search, setSearch] = useState("");
   const [filterWard, setFilterWard] = useState("");
   const [filterDept, setFilterDept] = useState("");
   const [filterDoctor, setFilterDoctor] = useState("");
+  const [statusTab, setStatusTab] = useState("ALL");
 
-  // Add/Edit Modal states
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  // Add / Edit Form Modal State
   const [formData, setFormData] = useState(initialFormState);
   const [formErrors, setFormErrors] = useState({});
-  const [serverError, setServerError] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Delete Confirmation Modal state
+  // Custom Centered Delete Confirmation Modal State
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
-  // Fetch patients from backend
   const fetchPatients = async () => {
     setLoading(true);
-    setGlobalError("");
     try {
       const params = new URLSearchParams();
-      if (search.trim()) params.append("search", search.trim());
+      if (search) params.append("search", search);
       if (filterWard) params.append("ward", filterWard);
       if (filterDept) params.append("department", filterDept);
       if (filterDoctor) params.append("doctor", filterDoctor);
 
       const res = await fetch(`${API_BASE_URL}/patients?${params.toString()}`);
-      if (!res.ok) throw new Error("Unable to connect to the server. Make sure the backend is running.");
+      if (!res.ok) throw new Error("Failed to fetch patient records.");
       const data = await res.json();
       setPatients(data);
     } catch (err) {
-      setGlobalError(err.message);
+      setApiError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchPatients();
-    }, 200); // Small debounce for smooth typing
-    return () => clearTimeout(timer);
+    fetchPatients();
   }, [search, filterWard, filterDept, filterDoctor]);
 
-  // Dashboard Summary Metrics
+  // Dashboard Stats
   const stats = useMemo(() => {
     const total = patients.length;
     const admitted = patients.filter((p) => p.status === "Admitted").length;
     const discharged = patients.filter((p) => p.status === "Discharged").length;
-    const icu = patients.filter((p) => p.ward === "ICU" && p.status === "Admitted").length;
-    return { total, admitted, discharged, icu };
+    const activeIcu = patients.filter(
+      (p) => p.status === "Admitted" && p.ward === "ICU"
+    ).length;
+    return { total, admitted, discharged, activeIcu };
   }, [patients]);
 
-  // Strict Frontend Validation
+  const displayedPatients = useMemo(() => {
+    if (statusTab === "ALL") return patients;
+    return patients.filter((p) => p.status === statusTab);
+  }, [patients, statusTab]);
+
+  // Frontend Validation
   const validateForm = () => {
     const errors = {};
-    const lettersOnlyRegex = /^[A-Za-z\s]+$/;
+    const nameRegex = /^[A-Za-z\s]+$/;
 
     if (!formData.name.trim()) {
       errors.name = "Patient name is required.";
-    } else if (!lettersOnlyRegex.test(formData.name.trim())) {
-      errors.name = "Name must contain letters only (no numbers or special characters).";
+    } else if (!nameRegex.test(formData.name.trim())) {
+      errors.name = "Name must contain letters only.";
     }
 
-    const ageVal = Number(formData.age);
-    if (formData.age === "" || formData.age === null || isNaN(ageVal)) {
+    const ageNum = Number(formData.age);
+    if (formData.age === "" || isNaN(ageNum)) {
       errors.age = "Age is required.";
-    } else if (!Number.isInteger(ageVal) || ageVal < 0 || ageVal > 120) {
-      errors.age = "Age must be a whole number between 0 and 120.";
+    } else if (ageNum < 0 || ageNum > 120) {
+      errors.age = "Age must be between 0 and 120.";
     }
 
-    if (!formData.gender) errors.gender = "Please select a gender.";
-    if (!formData.ward) errors.ward = "Please select a ward.";
-    if (!formData.department) errors.department = "Please select a department.";
-    if (!formData.doctor) errors.doctor = "Please assign a doctor.";
+    if (!formData.gender) errors.gender = "Select a gender.";
+    if (!formData.ward) errors.ward = "Select a ward.";
+    if (!formData.department) errors.department = "Select a department.";
+    if (!formData.doctor) errors.doctor = "Select a doctor.";
 
     if (!formData.admission_date) {
       errors.admission_date = "Admission date is required.";
-    } else if (formData.admission_date > getTodayDate()) {
-      errors.admission_date = "Admission date cannot be in the future.";
+    } else {
+      const today = new Date().toISOString().split("T")[0];
+      if (formData.admission_date > today) {
+        errors.admission_date = "Cannot be a future date.";
+      }
     }
 
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handleOpenAdd = () => {
-    setEditingId(null);
-    setFormData({ ...initialFormState, admission_date: getTodayDate() });
-    setFormErrors({});
-    setServerError("");
-    setIsModalOpen(true);
-  };
-
-  const handleOpenEdit = (patient) => {
-    setEditingId(patient.id);
-    setFormData({
-      name: patient.name,
-      age: String(patient.age),
-      gender: patient.gender,
-      ward: patient.ward,
-      department: patient.department,
-      doctor: patient.doctor,
-      admission_date: patient.admission_date,
-      status: patient.status,
-    });
-    setFormErrors({});
-    setServerError("");
-    setIsModalOpen(true);
-  };
-
-  const handleFormSubmit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setServerError("");
+    setApiError("");
     if (!validateForm()) return;
 
     setSubmitting(true);
-    const url = editingId ? `${API_BASE_URL}/patients/${editingId}` : `${API_BASE_URL}/patients`;
+    const url = editingId
+      ? `${API_BASE_URL}/patients/${editingId}`
+      : `${API_BASE_URL}/patients`;
     const method = editingId ? "PUT" : "POST";
 
     try {
@@ -184,35 +183,55 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) {
         const msg =
-          Array.isArray(data.detail) && data.detail[0]?.msg
-            ? data.detail[0].msg.replace("Value error, ", "")
-            : data.detail || "Invalid input rejected by server.";
+          data.detail?.[0]?.msg || data.detail || "Server rejected the input.";
         throw new Error(msg);
       }
 
-      setIsModalOpen(false);
+      closeForm();
       fetchPatients();
     } catch (err) {
-      setServerError(err.message);
+      setApiError(err.message);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleDischarge = async (patient) => {
+  const handleEdit = (patient) => {
+    setEditingId(patient.id);
+    setFormData({
+      name: patient.name,
+      age: patient.age,
+      gender: patient.gender,
+      ward: patient.ward,
+      department: patient.department,
+      doctor: patient.doctor,
+      admission_date: patient.admission_date,
+      status: patient.status,
+    });
+    setFormErrors({});
+    setApiError("");
+    setIsFormOpen(true);
+  };
+
+  const handleDischarge = async (id) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/patients/${patient.id}/discharge`, {
+      const res = await fetch(`${API_BASE_URL}/patients/${id}/discharge`, {
         method: "PATCH",
       });
       if (!res.ok) throw new Error("Failed to discharge patient.");
       fetchPatients();
     } catch (err) {
-      setGlobalError(err.message);
+      alert(err.message);
     }
+  };
+
+  const openDeleteModal = (id, name) => {
+    setDeleteTarget({ id, name });
   };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
+    setDeleting(true);
     try {
       const res = await fetch(`${API_BASE_URL}/patients/${deleteTarget.id}`, {
         method: "DELETE",
@@ -221,9 +240,25 @@ export default function App() {
       setDeleteTarget(null);
       fetchPatients();
     } catch (err) {
-      setGlobalError(err.message);
-      setDeleteTarget(null);
+      alert(err.message);
+    } finally {
+      setDeleting(false);
     }
+  };
+
+  const openAddForm = () => {
+    setEditingId(null);
+    setFormData(initialFormState);
+    setFormErrors({});
+    setApiError("");
+    setIsFormOpen(true);
+  };
+
+  const closeForm = () => {
+    setIsFormOpen(false);
+    setEditingId(null);
+    setFormData(initialFormState);
+    setFormErrors({});
   };
 
   const resetFilters = () => {
@@ -231,498 +266,565 @@ export default function App() {
     setFilterWard("");
     setFilterDept("");
     setFilterDoctor("");
+    setStatusTab("ALL");
   };
 
-  const hasActiveFilters = search || filterWard || filterDept || filterDoctor;
+  const hasActiveFilters =
+    search || filterWard || filterDept || filterDoctor || statusTab !== "ALL";
+
+  const getWardBadgeStyle = (ward) => {
+    if (ward === "ICU" || ward === "Emergency") {
+      return "bg-[#2A1822] text-[#F48FB1] border-[#883955]/50";
+    }
+    return "bg-[#1C2614] text-[#C6F432] border-[#C6F432]/40";
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col">
-      {/* Top Navigation Bar */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-teal-600 p-2 rounded-xl text-white shadow-sm">
-              <Activity className="w-6 h-6" />
+    <div className="min-h-screen page-lime-backdrop text-white font-sans antialiased selection:bg-[#C6F432] selection:text-[#08080C]">
+      {/* Sticky Dark Header */}
+      <header className="sticky top-0 z-30 bg-[#08080C]/85 backdrop-blur-md border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#C6F432] flex items-center justify-center text-[#08080C] shadow-[0_0_20px_rgba(198,244,50,0.3)] shrink-0">
+              <Activity className="w-5 h-5 stroke-[2.5]" />
             </div>
-            <div>
-              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                MedCare <span className="text-teal-600">Admit</span>
+            <div className="truncate">
+              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white leading-none">
+                MedCare <span className="text-[#C6F432]">Admit</span>
               </h1>
-              <p className="text-xs text-slate-500 hidden sm:block">
-                Hospital Inpatient & Ward Management System
+              <p className="hidden sm:block text-xs text-zinc-400 mt-0.5">
+                Patient Admission Management App
               </p>
             </div>
           </div>
 
           <button
-            onClick={handleOpenAdd}
-            className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-medium text-sm px-4 py-2.5 rounded-xl shadow-sm transition cursor-pointer"
+            onClick={openAddForm}
+            className="inline-flex items-center gap-2 bg-[#C6F432] hover:bg-[#d4fa52] active:scale-[0.98] text-[#08080C] text-sm font-bold px-3.5 sm:px-4 py-2.5 rounded-xl shadow-[0_0_20px_rgba(198,244,50,0.25)] transition shrink-0"
           >
-            <UserPlus className="w-4 h-4" />
+            <UserPlus className="w-4 h-4 stroke-[2.2]" />
             <span>Admit Patient</span>
           </button>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 flex-1">
-        {/* Global Error Banner */}
-        {globalError && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-3 text-sm">
-            <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
-            <span>{globalError}</span>
-          </div>
-        )}
+      {/* Top Hero Grid Section */}
+      <div className="hero-grid-overlay border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 pb-6">
+          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            {/* Stat 1: Total Records */}
+            <div className="bg-[#111216] rounded-2xl p-3.5 sm:p-4 border border-white/10 shadow-xl flex items-center gap-3">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-blue-500/15 text-blue-400 border border-blue-500/25 flex items-center justify-center shrink-0">
+                <Users className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <span className="block text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-zinc-400 truncate">
+                  Total Records
+                </span>
+                <span className="text-xl sm:text-2xl font-bold text-white">
+                  {stats.total}
+                </span>
+              </div>
+            </div>
 
-        {/* Summary Stat Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-              <Users className="w-6 h-6" />
+            {/* Stat 2: Admitted */}
+            <div className="bg-[#111216] rounded-2xl p-3.5 sm:p-4 border border-[#C6F432]/30 shadow-xl flex items-center gap-3">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#C6F432]/15 text-[#C6F432] border border-[#C6F432]/30 flex items-center justify-center shrink-0">
+                <BedDouble className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <span className="block text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-zinc-400 truncate">
+                  Admitted
+                </span>
+                <span className="text-xl sm:text-2xl font-bold text-white">
+                  {stats.admitted}
+                </span>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Showing Records</p>
-              <p className="text-2xl font-bold text-slate-900">{stats.total}</p>
-            </div>
-          </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
-              <BedDouble className="w-6 h-6" />
+            {/* Stat 3: Active ICU */}
+            <div className="bg-[#111216] rounded-2xl p-3.5 sm:p-4 border border-white/10 shadow-xl flex items-center gap-3">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/25 flex items-center justify-center shrink-0">
+                <HeartPulse className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <span className="block text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-zinc-400 truncate">
+                  Active ICU
+                </span>
+                <span className="text-xl sm:text-2xl font-bold text-white">
+                  {stats.activeIcu}
+                </span>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Admitted</p>
-              <p className="text-2xl font-bold text-emerald-600">{stats.admitted}</p>
-            </div>
-          </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
-              <Activity className="w-6 h-6" />
+            {/* Stat 4: Discharged */}
+            <div className="bg-[#111216] rounded-2xl p-3.5 sm:p-4 border border-white/10 shadow-xl flex items-center gap-3">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-zinc-500/15 text-zinc-300 border border-zinc-500/25 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <span className="block text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-zinc-400 truncate">
+                  Discharged
+                </span>
+                <span className="text-xl sm:text-2xl font-bold text-white">
+                  {stats.discharged}
+                </span>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Active ICU</p>
-              <p className="text-2xl font-bold text-amber-600">{stats.icu}</p>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="p-3 bg-slate-100 text-slate-600 rounded-xl">
-              <CheckCircle2 className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Discharged</p>
-              <p className="text-2xl font-bold text-slate-700">{stats.discharged}</p>
-            </div>
-          </div>
+          </section>
         </div>
+      </div>
 
-        {/* Search and Filter Controls */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-              <Filter className="w-4 h-4 text-teal-600" />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+        {/* Search & Filter Card */}
+        <section className="bg-[#111216] rounded-2xl p-4 sm:p-5 border border-[#C6F432]/25 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-white font-semibold text-sm">
+              <Filter className="w-4 h-4 text-[#C6F432]" />
               <span>Search & Filter Patients</span>
             </div>
-            {hasActiveFilters && (
-              <button
-                onClick={resetFilters}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-600 hover:text-teal-700 cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Clear all filters
-              </button>
-            )}
+
+            {/* Status Segmented Tabs */}
+            <div className="inline-flex bg-[#191B20] p-1 rounded-xl border border-white/5 self-start sm:self-auto">
+              {[
+                { key: "ALL", label: `All (${patients.length})` },
+                { key: "Admitted", label: `Admitted (${stats.admitted})` },
+                { key: "Discharged", label: `Discharged (${stats.discharged})` },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setStatusTab(tab.key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    statusTab === tab.key
+                      ? "bg-[#C6F432] text-[#08080C] shadow-xs"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* Search by Name */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+            {/* Search Input */}
+            <div className="relative lg:col-span-4">
+              <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 placeholder="Search by patient name..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
+                className="w-full pl-10 pr-3 py-2.5 bg-[#181A20] border border-white/10 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-[#C6F432] focus:ring-1 focus:ring-[#C6F432] transition"
               />
             </div>
 
-            {/* Filter by Ward */}
-            <select
-              value={filterWard}
-              onChange={(e) => setFilterWard(e.target.value)}
-              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
-            >
-              <option value="">All Wards</option>
-              {WARDS.map((w) => (
-                <option key={w} value={w}>{w}</option>
-              ))}
-            </select>
-
-            {/* Filter by Department */}
-            <select
-              value={filterDept}
-              onChange={(e) => setFilterDept(e.target.value)}
-              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
-            >
-              <option value="">All Departments</option>
-              {DEPARTMENTS.map((d) => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-
-            {/* Filter by Doctor */}
-            <select
-              value={filterDoctor}
-              onChange={(e) => setFilterDoctor(e.target.value)}
-              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
-            >
-              <option value="">All Doctors</option>
-              {DOCTORS.map((doc) => (
-                <option key={doc} value={doc}>{doc}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Patient Records List */}
-        {loading ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500">
-            <div className="animate-spin w-8 h-8 border-4 border-teal-600 border-t-transparent rounded-full mx-auto mb-3"></div>
-            <p className="text-sm font-medium">Loading patient directory...</p>
-          </div>
-        ) : patients.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3">
-            <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto">
-              <Users className="w-6 h-6" />
+            {/* Ward Select */}
+            <div className="lg:col-span-2">
+              <select
+                value={filterWard}
+                onChange={(e) => setFilterWard(e.target.value)}
+                className="w-full px-3 py-2.5 bg-[#181A20] border border-white/10 rounded-xl text-sm text-zinc-200 focus:outline-none focus:border-[#C6F432]"
+              >
+                <option value="">All Wards</option>
+                {WARDS.map((w) => (
+                  <option key={w} value={w}>{w}</option>
+                ))}
+              </select>
             </div>
-            <h3 className="text-base font-semibold text-slate-900">No patients found</h3>
-            <p className="text-sm text-slate-500 max-w-md mx-auto">
-              {hasActiveFilters
-                ? "No patient records match your current search or filter criteria."
-                : "Get started by admitting your first patient into the hospital system."}
-            </p>
-            {hasActiveFilters ? (
+
+            {/* Department Select */}
+            <div className="lg:col-span-3">
+              <select
+                value={filterDept}
+                onChange={(e) => setFilterDept(e.target.value)}
+                className="w-full px-3 py-2.5 bg-[#181A20] border border-white/10 rounded-xl text-sm text-zinc-200 focus:outline-none focus:border-[#C6F432]"
+              >
+                <option value="">All Departments</option>
+                {DEPARTMENTS.map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Doctor Select */}
+            <div className="lg:col-span-2">
+              <select
+                value={filterDoctor}
+                onChange={(e) => setFilterDoctor(e.target.value)}
+                className="w-full px-3 py-2.5 bg-[#181A20] border border-white/10 rounded-xl text-sm text-zinc-200 focus:outline-none focus:border-[#C6F432]"
+              >
+                <option value="">All Doctors</option>
+                {DOCTORS.map((doc) => (
+                  <option key={doc} value={doc}>{doc}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Reset Button */}
+            <div className="lg:col-span-1">
               <button
                 onClick={resetFilters}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-xl transition cursor-pointer"
+                disabled={!hasActiveFilters}
+                title="Reset all filters"
+                className="w-full h-full min-h-[42px] inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[#181A20] border border-white/10 text-sm font-medium text-zinc-300 hover:border-[#C6F432]/50 hover:text-[#C6F432] disabled:opacity-35 disabled:pointer-events-none transition"
               >
-                Reset Filters
+                <RotateCcw className="w-4 h-4" />
+                <span className="lg:hidden">Reset Filters</span>
               </button>
-            ) : (
+            </div>
+          </div>
+        </section>
+
+        {/* Patient Records Display */}
+        {loading ? (
+          <div className="bg-[#111216] rounded-2xl p-12 border border-white/10 text-center">
+            <div className="w-8 h-8 border-2 border-[#C6F432] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-sm text-zinc-400 font-medium">Loading patient directory...</p>
+          </div>
+        ) : displayedPatients.length === 0 ? (
+          <div className="bg-[#111216] rounded-2xl p-12 border border-white/10 text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-white/5 text-zinc-400 flex items-center justify-center mx-auto">
+              <Users className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-semibold text-white">No patient records found</h3>
+            <p className="text-sm text-zinc-400 max-w-sm mx-auto">
+              Try adjusting your search or filter criteria, or admit a new patient.
+            </p>
+            {hasActiveFilters && (
               <button
-                onClick={handleOpenAdd}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-xl transition cursor-pointer"
+                onClick={resetFilters}
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#C6F432] hover:underline"
               >
-                <UserPlus className="w-4 h-4" />
-                Admit First Patient
+                <RotateCcw className="w-3.5 h-3.5" /> Clear filters
               </button>
             )}
           </div>
         ) : (
           <>
-            {/* Desktop & Tablet Table View */}
-            <div className="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50/80 border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                      <th className="py-3.5 px-5">Patient Details</th>
-                      <th className="py-3.5 px-4">Ward & Department</th>
-                      <th className="py-3.5 px-4">Assigned Doctor</th>
-                      <th className="py-3.5 px-4">Admission Date</th>
-                      <th className="py-3.5 px-4">Status</th>
-                      <th className="py-3.5 px-5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-sm">
-                    {patients.map((patient) => (
-                      <tr key={patient.id} className="hover:bg-slate-50/80 transition">
+            {/* Mobile & Tablet Card View (< 1024px) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:hidden gap-4">
+              {displayedPatients.map((p) => {
+                const isAdmitted = p.status === "Admitted";
+                return (
+                  <div
+                    key={p.id}
+                    className={`bg-[#111216] rounded-2xl p-4 shadow-xl transition ${
+                      isAdmitted
+                        ? "border border-[#C6F432]/35"
+                        : "border border-white/10"
+                    }`}
+                  >
+                    {/* Card Top Row */}
+                    <div className="flex items-start justify-between gap-3 mb-3.5">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-11 h-11 rounded-xl bg-[#182218] border border-[#C6F432]/35 text-[#C6F432] flex items-center justify-center font-bold text-base shrink-0">
+                          {p.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="font-bold text-white text-base truncate">
+                            {p.name}
+                          </h3>
+                          <p className="text-xs text-zinc-400">
+                            {p.age} yrs &bull; {p.gender}
+                          </p>
+                        </div>
+                      </div>
+
+                      {isAdmitted ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#182614] text-[#C6F432] border border-[#C6F432]/60 shadow-[0_0_12px_rgba(198,244,50,0.3)] shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#C6F432]" />
+                          Admitted
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-[#1D222B] text-zinc-300 border border-white/10 shrink-0">
+                          Discharged
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Inner Details Box */}
+                    <div className="bg-[#181A20] rounded-xl p-3.5 grid grid-cols-2 gap-3 text-xs border border-white/5 mb-3.5">
+                      <div>
+                        <span className="text-zinc-500 block mb-1">Ward</span>
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border ${getWardBadgeStyle(
+                            p.ward
+                          )}`}
+                        >
+                          <Building2 className="w-3 h-3" />
+                          {p.ward}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block mb-1">Department</span>
+                        <span className="font-semibold text-zinc-200">{p.department}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block mb-1">Attending Doctor</span>
+                        <span className="font-semibold text-white truncate block">
+                          {p.doctor}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block mb-1">Admission Timeline</span>
+                        <span className="font-semibold text-white block">
+                          {p.admission_date}
+                        </span>
+                        <span className="text-[11px] text-zinc-400">
+                          {getRelativeAdmissionTime(p.admission_date)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center justify-end gap-2">
+                      {isAdmitted && (
+                        <button
+                          onClick={() => handleDischarge(p.id)}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[#1A2414] hover:bg-[#23311B] text-[#C6F432] border border-[#C6F432]/45 text-xs font-semibold transition"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Discharge
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleEdit(p)}
+                        className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#182232] hover:bg-[#1f2d42] text-blue-400 border border-blue-500/25 text-xs font-semibold transition"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => openDeleteModal(p.id, p.name)}
+                        className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#2A1619] hover:bg-[#381c20] text-rose-400 border border-rose-500/25 text-xs font-semibold transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop Table View (>= 1024px) */}
+            <div className="hidden lg:block bg-[#111216] rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-[#16181E] border-b border-white/10 text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                    <th className="py-4 px-5">Patient</th>
+                    <th className="py-4 px-4">Ward & Department</th>
+                    <th className="py-4 px-4">Attending Doctor</th>
+                    <th className="py-4 px-4">Admission Timeline</th>
+                    <th className="py-4 px-4">Status</th>
+                    <th className="py-4 px-5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.07] text-sm">
+                  {displayedPatients.map((p) => {
+                    const isAdmitted = p.status === "Admitted";
+                    return (
+                      <tr key={p.id} className="hover:bg-white/[0.02] transition">
+                        {/* Column 1: Patient */}
                         <td className="py-4 px-5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-teal-50 text-teal-700 font-bold flex items-center justify-center text-sm shrink-0">
-                              {patient.name.charAt(0).toUpperCase()}
+                          <div className="flex items-center gap-3.5">
+                            <div className="w-10 h-10 rounded-xl bg-[#182018] border border-[#C6F432]/30 text-[#C6F432] flex items-center justify-center font-bold text-sm shrink-0">
+                              {p.name.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <p className="font-semibold text-slate-900">{patient.name}</p>
-                              <p className="text-xs text-slate-500">
-                                {patient.age} yrs &bull; {patient.gender}
-                              </p>
+                              <div className="font-bold text-white text-[15px]">
+                                {p.name}
+                              </div>
+                              <div className="text-xs text-zinc-400 mt-0.5">
+                                {p.age} yrs &bull; {p.gender}
+                              </div>
                             </div>
                           </div>
                         </td>
 
+                        {/* Column 2: Ward & Department */}
                         <td className="py-4 px-4">
                           <span
-                            className={`inline-block text-xs font-medium px-2 py-0.5 rounded-md mb-1 ${
-                              patient.ward === "ICU" || patient.ward === "Emergency"
-                                ? "bg-rose-50 text-rose-700 border border-rose-200"
-                                : "bg-blue-50 text-blue-700 border border-blue-200"
-                            }`}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold border ${getWardBadgeStyle(
+                              p.ward
+                            )}`}
                           >
-                            {patient.ward}
+                            <Building2 className="w-3 h-3" />
+                            {p.ward}
                           </span>
-                          <p className="text-xs text-slate-600">{patient.department}</p>
-                        </td>
-
-                        <td className="py-4 px-4">
-                          <div className="flex items-center gap-1.5 text-slate-700 font-medium">
-                            <Stethoscope className="w-4 h-4 text-teal-600 shrink-0" />
-                            <span>{patient.doctor}</span>
+                          <div className="text-xs text-zinc-400 mt-1.5 pl-0.5">
+                            {p.department}
                           </div>
                         </td>
 
-                        <td className="py-4 px-4 text-slate-600">
-                          <div className="flex items-center gap-1.5">
-                            <Calendar className="w-4 h-4 text-slate-400" />
-                            <span>{patient.admission_date}</span>
+                        {/* Column 3: Attending Doctor */}
+                        <td className="py-4 px-4">
+                          <div className="inline-flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-[#192319] border border-[#C6F432]/25 text-[#C6F432] flex items-center justify-center shrink-0">
+                              <Stethoscope className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="font-semibold text-zinc-100">
+                              {p.doctor}
+                            </span>
                           </div>
                         </td>
 
+                        {/* Column 4: Admission Timeline */}
                         <td className="py-4 px-4">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                              patient.status === "Admitted"
-                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                : "bg-slate-100 text-slate-600 border border-slate-200"
-                            }`}
-                          >
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                patient.status === "Admitted" ? "bg-emerald-500" : "bg-slate-400"
-                              }`}
-                            ></span>
-                            {patient.status}
-                          </span>
+                          <div className="flex items-center gap-1.5 text-zinc-100 text-xs font-semibold">
+                            <Calendar className="w-3.5 h-3.5 text-zinc-400" />
+                            <span>{p.admission_date}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-zinc-400 text-[11px] mt-1">
+                            <Clock className="w-3 h-3 text-zinc-500" />
+                            <span>{getRelativeAdmissionTime(p.admission_date)}</span>
+                          </div>
                         </td>
 
+                        {/* Column 5: Status Pill */}
+                        <td className="py-4 px-4">
+                          {isAdmitted ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#182614] text-[#C6F432] border border-[#C6F432]/65 shadow-[0_0_15px_rgba(198,244,50,0.28)]">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#C6F432]" />
+                              Admitted
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-[#1B222C] text-zinc-300 border border-white/10">
+                              Discharged
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Column 6: Actions */}
                         <td className="py-4 px-5 text-right">
                           <div className="inline-flex items-center justify-end gap-2">
-                            {patient.status === "Admitted" && (
+                            {isAdmitted && (
                               <button
-                                onClick={() => handleDischarge(patient)}
-                                title="Mark as Discharged"
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg transition cursor-pointer"
+                                onClick={() => handleDischarge(p.id)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1A2414] hover:bg-[#23311B] text-[#C6F432] border border-[#C6F432]/45 text-xs font-semibold transition"
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                                 Discharge
                               </button>
                             )}
                             <button
-                              onClick={() => handleOpenEdit(patient)}
-                              title="Edit Patient"
-                              className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
+                              onClick={() => handleEdit(p)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#182232] hover:bg-[#1f2d42] text-blue-400 border border-blue-500/25 text-xs font-semibold transition"
                             >
-                              <Edit3 className="w-4 h-4" />
+                              <Pencil className="w-3.5 h-3.5" />
+                              Edit
                             </button>
                             <button
-                              onClick={() => setDeleteTarget(patient)}
-                              title="Delete Patient"
-                              className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                              onClick={() => openDeleteModal(p.id, p.name)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2A1619] hover:bg-[#381c20] text-rose-400 border border-rose-500/25 text-xs font-semibold transition"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Delete
                             </button>
                           </div>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Mobile Card View */}
-            <div className="grid grid-cols-1 gap-4 md:hidden">
-              {patients.map((patient) => (
-                <div
-                  key={patient.id}
-                  className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-teal-50 text-teal-700 font-bold flex items-center justify-center">
-                        {patient.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-slate-900">{patient.name}</h3>
-                        <p className="text-xs text-slate-500">
-                          {patient.age} yrs &bull; {patient.gender}
-                        </p>
-                      </div>
-                    </div>
-
-                    <span
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        patient.status === "Admitted"
-                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                          : "bg-slate-100 text-slate-600 border border-slate-200"
-                      }`}
-                    >
-                      {patient.status}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-3 rounded-xl">
-                    <div>
-                      <span className="text-slate-400 block">Ward</span>
-                      <span className="font-semibold text-slate-700">{patient.ward}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block">Department</span>
-                      <span className="font-semibold text-slate-700">{patient.department}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block">Doctor</span>
-                      <span className="font-semibold text-slate-700">{patient.doctor}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block">Admitted On</span>
-                      <span className="font-semibold text-slate-700">{patient.admission_date}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2 pt-1">
-                    {patient.status === "Admitted" && (
-                      <button
-                        onClick={() => handleDischarge(patient)}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 rounded-xl"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Discharge
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleOpenEdit(patient)}
-                      className="px-3 py-2 text-xs font-semibold bg-blue-50 text-blue-700 rounded-xl inline-flex items-center gap-1"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => setDeleteTarget(patient)}
-                      className="px-3 py-2 text-xs font-semibold bg-red-50 text-red-700 rounded-xl inline-flex items-center gap-1"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))}
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </>
         )}
       </main>
 
       {/* Add / Edit Patient Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-teal-100 text-teal-700 rounded-lg">
-                  <Building2 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">
-                    {editingId ? "Edit Patient Record" : "New Patient Admission"}
-                  </h2>
-                  <p className="text-xs text-slate-500">All fields marked with * are mandatory</p>
-                </div>
+      {isFormOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-[#111216] w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl shadow-2xl border border-[#C6F432]/30 overflow-hidden max-h-[92vh] flex flex-col">
+            <div className="px-6 py-4 bg-[#16181E] border-b border-white/10 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">
+                  {editingId ? "Edit Patient Record" : "Admit New Patient"}
+                </h2>
+                <p className="text-xs text-zinc-400">
+                  All fields marked with * are mandatory
+                </p>
               </div>
               <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                onClick={closeForm}
+                className="w-8 h-8 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 flex items-center justify-center transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleFormSubmit} className="p-6 space-y-4 max-h-[82vh] overflow-y-auto">
-              {serverError && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{serverError}</span>
+            <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+              {apiError && (
+                <div className="flex items-start gap-2 bg-rose-500/10 border border-rose-500/30 text-rose-300 px-3.5 py-2.5 rounded-xl text-xs font-medium">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{apiError}</span>
                 </div>
               )}
 
-              {/* Full Name */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
                   Patient Full Name *
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g., Rohan Kulkarni"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 ${
-                    formErrors.name
-                      ? "border-red-400 focus:ring-red-400 bg-red-50/30"
-                      : "border-slate-200 focus:ring-teal-500"
-                  }`}
+                  placeholder="e.g. Virat Kohli"
+                  className="w-full px-3.5 py-2.5 bg-[#181A20] border border-white/10 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-[#C6F432]"
                 />
                 {formErrors.name && (
-                  <p className="text-xs text-red-600 mt-1">{formErrors.name}</p>
+                  <p className="text-rose-400 text-xs mt-1">{formErrors.name}</p>
                 )}
               </div>
 
-              {/* Age & Gender */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Age (0 - 120) *
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                    Age *
                   </label>
                   <input
                     type="number"
-                    placeholder="e.g., 34"
                     value={formData.age}
                     onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 ${
-                      formErrors.age
-                        ? "border-red-400 focus:ring-red-400 bg-red-50/30"
-                        : "border-slate-200 focus:ring-teal-500"
-                    }`}
+                    placeholder="0 - 120"
+                    className="w-full px-3.5 py-2.5 bg-[#181A20] border border-white/10 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-[#C6F432]"
                   />
                   {formErrors.age && (
-                    <p className="text-xs text-red-600 mt-1">{formErrors.age}</p>
+                    <p className="text-rose-400 text-xs mt-1">{formErrors.age}</p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Gender *</label>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                    Gender *
+                  </label>
                   <select
                     value={formData.gender}
                     onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-sm bg-white focus:outline-none focus:ring-2 ${
-                      formErrors.gender
-                        ? "border-red-400 focus:ring-red-400"
-                        : "border-slate-200 focus:ring-teal-500"
-                    }`}
+                    className="w-full px-3.5 py-2.5 bg-[#181A20] border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-[#C6F432]"
                   >
-                    <option value="">Select Gender</option>
+                    <option value="">Select</option>
                     {GENDERS.map((g) => (
                       <option key={g} value={g}>{g}</option>
                     ))}
                   </select>
                   {formErrors.gender && (
-                    <p className="text-xs text-red-600 mt-1">{formErrors.gender}</p>
+                    <p className="text-rose-400 text-xs mt-1">{formErrors.gender}</p>
                   )}
                 </div>
               </div>
 
-              {/* Ward & Department */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Ward *</label>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                    Ward *
+                  </label>
                   <select
                     value={formData.ward}
                     onChange={(e) => setFormData({ ...formData, ward: e.target.value })}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-sm bg-white focus:outline-none focus:ring-2 ${
-                      formErrors.ward
-                        ? "border-red-400 focus:ring-red-400"
-                        : "border-slate-200 focus:ring-teal-500"
-                    }`}
+                    className="w-full px-3.5 py-2.5 bg-[#181A20] border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-[#C6F432]"
                   >
                     <option value="">Select Ward</option>
                     {WARDS.map((w) => (
@@ -730,22 +832,18 @@ export default function App() {
                     ))}
                   </select>
                   {formErrors.ward && (
-                    <p className="text-xs text-red-600 mt-1">{formErrors.ward}</p>
+                    <p className="text-rose-400 text-xs mt-1">{formErrors.ward}</p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
                     Department *
                   </label>
                   <select
                     value={formData.department}
                     onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-sm bg-white focus:outline-none focus:ring-2 ${
-                      formErrors.department
-                        ? "border-red-400 focus:ring-red-400"
-                        : "border-slate-200 focus:ring-teal-500"
-                    }`}
+                    className="w-full px-3.5 py-2.5 bg-[#181A20] border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-[#C6F432]"
                   >
                     <option value="">Select Department</option>
                     {DEPARTMENTS.map((d) => (
@@ -753,25 +851,20 @@ export default function App() {
                     ))}
                   </select>
                   {formErrors.department && (
-                    <p className="text-xs text-red-600 mt-1">{formErrors.department}</p>
+                    <p className="text-rose-400 text-xs mt-1">{formErrors.department}</p>
                   )}
                 </div>
               </div>
 
-              {/* Doctor & Admission Date */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
                     Assigned Doctor *
                   </label>
                   <select
                     value={formData.doctor}
                     onChange={(e) => setFormData({ ...formData, doctor: e.target.value })}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-sm bg-white focus:outline-none focus:ring-2 ${
-                      formErrors.doctor
-                        ? "border-red-400 focus:ring-red-400"
-                        : "border-slate-200 focus:ring-teal-500"
-                    }`}
+                    className="w-full px-3.5 py-2.5 bg-[#181A20] border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-[#C6F432]"
                   >
                     <option value="">Select Doctor</option>
                     {DOCTORS.map((doc) => (
@@ -779,39 +872,38 @@ export default function App() {
                     ))}
                   </select>
                   {formErrors.doctor && (
-                    <p className="text-xs text-red-600 mt-1">{formErrors.doctor}</p>
+                    <p className="text-rose-400 text-xs mt-1">{formErrors.doctor}</p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
                     Admission Date *
                   </label>
                   <input
                     type="date"
-                    max={getTodayDate()}
+                    max={new Date().toISOString().split("T")[0]}
                     value={formData.admission_date}
-                    onChange={(e) => setFormData({ ...formData, admission_date: e.target.value })}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 ${
-                      formErrors.admission_date
-                        ? "border-red-400 focus:ring-red-400"
-                        : "border-slate-200 focus:ring-teal-500"
-                    }`}
+                    onChange={(e) =>
+                      setFormData({ ...formData, admission_date: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2.5 bg-[#181A20] border border-white/10 rounded-xl text-sm text-white [color-scheme:dark] focus:outline-none focus:border-[#C6F432]"
                   />
                   {formErrors.admission_date && (
-                    <p className="text-xs text-red-600 mt-1">{formErrors.admission_date}</p>
+                    <p className="text-rose-400 text-xs mt-1">{formErrors.admission_date}</p>
                   )}
                 </div>
               </div>
 
-              {/* Status (Visible when editing) */}
               {editingId && (
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                    Status
+                  </label>
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-3.5 py-2.5 bg-[#181A20] border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-[#C6F432]"
                   >
                     <option value="Admitted">Admitted</option>
                     <option value="Discharged">Discharged</option>
@@ -819,20 +911,24 @@ export default function App() {
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-white/10">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                  onClick={closeForm}
+                  className="px-4 py-2.5 rounded-xl text-sm font-semibold text-zinc-400 hover:text-white hover:bg-white/5 transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2.5 text-sm font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-sm transition disabled:opacity-50 cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl text-sm font-bold bg-[#C6F432] hover:bg-[#d4fa52] text-[#08080C] shadow-[0_0_20px_rgba(198,244,50,0.25)] disabled:opacity-50 transition"
                 >
-                  {submitting ? "Saving..." : editingId ? "Update Record" : "Admit Patient"}
+                  {submitting
+                    ? "Saving..."
+                    : editingId
+                    ? "Save Changes"
+                    : "Admit Patient"}
                 </button>
               </div>
             </form>
@@ -840,33 +936,52 @@ export default function App() {
         </div>
       )}
 
-      {/* Custom Delete Confirmation Modal */}
+      {/* Centered Delete Confirmation Modal */}
       {deleteTarget && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4">
-            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+        <div
+          onClick={() => !deleting && setDeleteTarget(null)}
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#111216] w-full max-w-md rounded-2xl border border-white/10 shadow-2xl p-6 text-center space-y-5"
+          >
+            {/* Trash Icon Box */}
+            <div className="w-12 h-12 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center justify-center mx-auto">
               <Trash2 className="w-6 h-6" />
             </div>
-            <div className="text-center space-y-1">
-              <h3 className="text-lg font-bold text-slate-900">Delete Patient Record?</h3>
-              <p className="text-sm text-slate-500">
+
+            {/* Title & Message */}
+            <div className="space-y-2">
+              <h3 className="text-lg font-bold text-white">
+                Delete Patient Record?
+              </h3>
+              <p className="text-sm text-zinc-400 leading-relaxed">
                 Are you sure you want to permanently remove{" "}
-                <span className="font-semibold text-slate-800">{deleteTarget.name}</span>? This
-                action cannot be undone.
+                <span className="font-semibold text-white">
+                  {deleteTarget.name}
+                </span>
+                ? This action cannot be undone.
               </p>
             </div>
-            <div className="flex items-center gap-3 pt-2">
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-3 pt-1">
               <button
+                type="button"
+                disabled={deleting}
                 onClick={() => setDeleteTarget(null)}
-                className="flex-1 py-2.5 text-sm font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl bg-[#181A20] hover:bg-[#22252E] text-zinc-300 border border-white/10 text-sm font-semibold transition disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
+                type="button"
+                disabled={deleting}
                 onClick={confirmDelete}
-                className="flex-1 py-2.5 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl transition cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold shadow-[0_0_20px_rgba(225,29,72,0.3)] transition disabled:opacity-50"
               >
-                Yes, Delete
+                {deleting ? "Deleting..." : "Yes, Delete"}
               </button>
             </div>
           </div>

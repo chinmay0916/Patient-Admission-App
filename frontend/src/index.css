@@ -3,6 +3,23 @@
 @tailwind utilities;
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: #f8fafc;
+  background-color: #08080C;
+  color: #FFFFFF;
+}
+
+/* Lime green gradient strictly on the plain background */
+.page-lime-backdrop {
+  background-color: #08080C;
+  background-image:
+    radial-gradient(ellipse 80% 35% at 50% 0%, rgba(198, 244, 50, 0.24) 0%, rgba(8, 8, 12, 0) 70%),
+    radial-gradient(ellipse 70% 45% at 50% 65%, rgba(198, 244, 50, 0.14) 0%, rgba(8, 8, 12, 0) 75%),
+    radial-gradient(ellipse 90% 35% at 50% 100%, rgba(198, 244, 50, 0.16) 0%, rgba(8, 8, 12, 0) 70%);
+}
+
+/* Subtle grid lines in the top hero area */
+.hero-grid-overlay {
+  background-image:
+    linear-gradient(to right, rgba(198, 244, 50, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(198, 244, 50, 0.06) 1px, transparent 1px);
+  background-size: 36px 36px;
 }
