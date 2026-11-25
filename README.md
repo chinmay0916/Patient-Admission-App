@@ -84,21 +84,24 @@ The frontend app will run at `http://localhost:5173`.
 ## Screenshots
 
 ### Desktop Dashboard View
-<img width="1920" height="1080" alt="Desktop View" src="https://github.com/user-attachments/assets/8ed62662-0d5a-4df6-9c90-ba53d38b4257" />
+<img width="750" alt="Desktop View" src="https://github.com/user-attachments/assets/8ed62662-0d5a-4df6-9c90-ba53d38b4257" />
 
 ### Admit / Edit Patient Modal
-<img width="1920" height="1080" alt="Admitting New Patient" src="https://github.com/user-attachments/assets/9d5152d8-36b4-45e0-a30b-d2507cbfbb1a" />
-<img width="1920" height="1080" alt="Editing Patient Record" src="https://github.com/user-attachments/assets/6049363d-db4e-4199-9e54-d47f2d498207" />
+<img width="750" alt="Admitting New Patient" src="https://github.com/user-attachments/assets/9d5152d8-36b4-45e0-a30b-d2507cbfbb1a" />
+<br/><br/>
+<img width="750" alt="Editing Patient Record" src="https://github.com/user-attachments/assets/6049363d-db4e-4199-9e54-d47f2d498207" />
 
 
 ### Delete Confirmation Dialog
-<img width="1920" height="1080" alt="Deleting Patient Record" src="https://github.com/user-attachments/assets/e43d3df5-5165-4a19-bcaf-f040c4554479" />
+<img width="750" alt="Deleting Patient Record" src="https://github.com/user-attachments/assets/e43d3df5-5165-4a19-bcaf-f040c4554479" />
 
 
 
 ### Mobile Responsive View
-<img width="720" height="1600" alt="Mobile View 1" src="https://github.com/user-attachments/assets/8a7323bc-8dcb-411c-9639-ad38d11c30f1" />
-<img width="720" height="1600" alt="Mobile View 2" src="https://github.com/user-attachments/assets/5af7225c-33c5-4337-a698-beba19803d56" />
-
+<p>
+<img width="280" alt="Mobile View 1" src="https://github.com/user-attachments/assets/8a7323bc-8dcb-411c-9639-ad38d11c30f1" />
+&nbsp;&nbsp;&nbsp;
+<img width="280" alt="Mobile View 2" src="https://github.com/user-attachments/assets/5af7225c-33c5-4337-a698-beba19803d56" />
+</p>
 
 
